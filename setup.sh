@@ -1,8 +1,9 @@
 #!/bin/bash
-# setup.sh - Install system dependencies for Streamlit Cloud
+# setup.sh - Complete setup script for Streamlit Cloud
 
-# Exit on error, but with proper handling
-set -e
+set -e  # Exit on error
+
+echo "🚀 Starting FaceCard Scanner setup..."
 
 # Create Streamlit config directory
 mkdir -p ~/.streamlit
@@ -11,9 +12,16 @@ mkdir -p ~/.streamlit
 cat > ~/.streamlit/config.toml << EOF
 [server]
 headless = true
-port = ${PORT:-8501}
+port = \${PORT:-8501}
 enableCORS = true
 enableXsrfProtection = true
+maxUploadSize = 5
+
+[theme]
+primaryColor = "#667eea"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
 
 [browser]
 gatherUsageStats = false
@@ -21,46 +29,36 @@ EOF
 
 echo "✅ Streamlit config created"
 
-# Update package list (ignore errors)
+# Update package list
 echo "📦 Updating package list..."
-apt-get update -qq || true
+apt-get update -qq
 
-# Install system dependencies with retry logic
+# Install system dependencies
 echo "📦 Installing system dependencies..."
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
+    pkg-config \
+    build-essential \
+    python3-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavcodec-extra \
     libsm6 \
     libxrender1 \
     libxext6 \
-    libgomp1 || {
-    echo "⚠️ Some packages failed to install, trying alternatives..."
-    
-    # Try alternative package names if the first attempt fails
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-        libgl1 \
-        libglib2.0-0t64 \
-        libsm6 \
-        libxrender1 \
-        libxext6 \
-        libgomp1 || {
-        echo "⚠️ Second attempt failed, installing minimal set..."
-        
-        # Install only the absolutely necessary packages
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-            libsm6 \
-            libxrender1 \
-            libxext6 \
-            libgomp1 || true
-    }
-}
+    libgomp1
 
 # Clean up to reduce image size
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-echo "✅ System dependencies installation completed"
-echo "🚀 Starting FaceCard Scanner..."
+echo "✅ System dependencies installed"
 
-# Run the Streamlit app
-exec streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0
+# Print Python version for debugging
+python --version
+pip --version
+
+echo "✅ Setup complete! Starting application..."

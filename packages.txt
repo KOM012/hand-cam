@@ -1,13 +1,22 @@
+# packages.txt
+# Build tools
 pkg-config
+build-essential
+python3-dev
+
+# FFmpeg/AV dependencies
 libavcodec-dev
 libavformat-dev
 libavdevice-dev
 libavutil-dev
 libswscale-dev
 libswresample-dev
+
+# OpenCV GUI dependencies (for headless, these are minimal)
 libsm6
 libxrender1
 libxext6
 libgomp1
-build-essential
-python3-dev
+
+# Additional media codecs
+libavcodec-extra
