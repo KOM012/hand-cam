@@ -1,0 +1,13 @@
+pkg-config
+libavcodec-dev
+libavformat-dev
+libavdevice-dev
+libavutil-dev
+libswscale-dev
+libswresample-dev
+libsm6
+libxrender1
+libxext6
+libgomp1
+build-essential
+python3-dev
