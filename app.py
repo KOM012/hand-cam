@@ -3,18 +3,19 @@ import streamlit as st
 import cv2
 import numpy as np
 import mediapipe as mp
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import av
 import time
 import random
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import os
 
 # Page configuration
 st.set_page_config(
     page_title="FaceCard Scanner",
     page_icon="💳",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 # Initialize session state
@@ -80,18 +81,6 @@ st.markdown("""
         backdrop-filter: blur(5px);
         box-shadow: 0 0 30px rgba(255,215,0,0.3);
     }
-    .scan-line {
-        position: absolute;
-        width: 100%;
-        height: 4px;
-        background: linear-gradient(90deg, transparent, gold, transparent);
-        animation: scan 2s linear infinite;
-    }
-    @keyframes scan {
-        0% { top: 0%; }
-        50% { top: 100%; }
-        100% { top: 0%; }
-    }
     .stats-box {
         background: rgba(255,255,255,0.1);
         border-radius: 10px;
@@ -100,10 +89,23 @@ st.markdown("""
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255,255,255,0.2);
     }
+    .stButton > button {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        color: white;
+        border: none;
+        padding: 0.5rem 2rem;
+        font-size: 1.2rem;
+        border-radius: 50px;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# FIXED: Initialize MediaPipe Face Detection properly
+# Initialize MediaPipe Face Detection
 @st.cache_resource
 def init_face_detection():
     """Initialize MediaPipe Face Detection model"""
@@ -114,52 +116,55 @@ def init_face_detection():
 
 class FaceCardTransformer(VideoTransformerBase):
     def __init__(self):
-        # FIXED: Initialize face detection directly
         self.face_detection = init_face_detection()
         self.last_classification = None
         self.classification_time = time.time()
+        self.last_detection_time = time.time()
         
     def classify_face(self, face_roi):
         """Simple classification logic for 'Slay' or 'Chopped'"""
         if face_roi.size == 0:
             return "Chopped"
         
-        # Convert to grayscale
-        gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
-        
-        # Calculate metrics
-        brightness = np.mean(gray)
-        contrast = np.std(gray)
-        
-        # Use Laplacian for sharpness (higher = sharper/more detailed)
-        laplacian = cv2.Laplacian(gray, cv2.CV_64F).var()
-        
-        # Simple scoring system (for fun!)
-        score = 0
-        
-        # Brightness score (ideal around 128)
-        if 100 < brightness < 180:
-            score += 2
-        elif 70 < brightness < 200:
-            score += 1
+        try:
+            # Convert to grayscale
+            gray = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
             
-        # Contrast score (higher contrast often looks better)
-        if contrast > 50:
-            score += 2
-        elif contrast > 30:
-            score += 1
+            # Calculate metrics
+            brightness = np.mean(gray)
+            contrast = np.std(gray)
             
-        # Sharpness score (sharper image = better)
-        if laplacian > 100:
-            score += 2
-        elif laplacian > 50:
-            score += 1
+            # Use Laplacian for sharpness
+            laplacian = cv2.Laplacian(gray, cv2.CV_64F).var()
             
-        # Add some randomness for fun (20% random factor)
-        if random.random() < 0.2:
-            score += 2 if random.random() > 0.5 else -2
+            # Simple scoring system
+            score = 0
             
-        return "Slay" if score >= 3 else "Chopped"
+            # Brightness score
+            if 100 < brightness < 180:
+                score += 2
+            elif 70 < brightness < 200:
+                score += 1
+                
+            # Contrast score
+            if contrast > 50:
+                score += 2
+            elif contrast > 30:
+                score += 1
+                
+            # Sharpness score
+            if laplacian > 100:
+                score += 2
+            elif laplacian > 50:
+                score += 1
+                
+            # Add randomness for fun
+            if random.random() < 0.2:
+                score += 2 if random.random() > 0.5 else -2
+                
+            return "Slay" if score >= 3 else "Chopped"
+        except:
+            return "Chopped"
     
     def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -172,16 +177,12 @@ class FaceCardTransformer(VideoTransformerBase):
             new_height = int(height * scale)
             img = cv2.resize(img, (new_width, new_height))
         
-        # Convert to RGB for MediaPipe
-        rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        
-        # Detect faces
-        results = self.face_detection.process(rgb_img)
-        
-        # Draw credit card overlay
+        # Create overlay
         overlay = img.copy()
+        
+        # Draw credit card frame
         cv2.rectangle(overlay, (20, 20), (img.shape[1]-20, img.shape[0]-20), 
-                     (255, 215, 0), 3)  # Gold border
+                     (255, 215, 0), 3)
         
         # Add credit card details
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -194,35 +195,48 @@ class FaceCardTransformer(VideoTransformerBase):
         cv2.line(overlay, (20, scan_pos), (img.shape[1]-20, scan_pos), 
                 (255, 215, 0), 2)
         
-        # FIXED: Check if results and detections exist
-        if results and results.detections:
-            for detection in results.detections:
-                bboxC = detection.location_data.relative_bounding_box
-                ih, iw, _ = img.shape
-                x = int(bboxC.xmin * iw)
-                y = int(bboxC.ymin * ih)
-                w = int(bboxC.width * iw)
-                h = int(bboxC.height * ih)
-                
-                # FIXED: Ensure coordinates are valid
-                if x >= 0 and y >= 0 and w > 0 and h > 0 and y+h <= ih and x+w <= iw:
-                    # Extract face ROI
-                    face_roi = img[y:y+h, x:x+w]
+        # Detect faces
+        try:
+            rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            results = self.face_detection.process(rgb_img)
+            
+            # Process detections
+            if results and results.detections:
+                for detection in results.detections:
+                    bboxC = detection.location_data.relative_bounding_box
+                    ih, iw, _ = img.shape
+                    x = int(bboxC.xmin * iw)
+                    y = int(bboxC.ymin * ih)
+                    w = int(bboxC.width * iw)
+                    h = int(bboxC.height * ih)
                     
-                    # Classify face
-                    if time.time() - self.classification_time > 2:  # Update every 2 seconds
-                        self.last_classification = self.classify_face(face_roi)
-                        self.classification_time = time.time()
-                        st.session_state.scan_result = self.last_classification
+                    # Ensure coordinates are valid
+                    x = max(0, x)
+                    y = max(0, y)
+                    w = min(w, img.shape[1] - x)
+                    h = min(h, img.shape[0] - y)
                     
-                    # Draw detection box
-                    cv2.rectangle(overlay, (x, y), (x+w, y+h), (0, 255, 0), 2)
-                    
-                    # Add classification label
-                    if self.last_classification:
-                        color = (0, 255, 0) if self.last_classification == "Slay" else (0, 0, 255)
-                        cv2.putText(overlay, self.last_classification, (x, y-10), 
-                                   font, 0.7, color, 2)
+                    if w > 0 and h > 0:
+                        face_roi = img[y:y+h, x:x+w]
+                        
+                        # Classify face every 2 seconds
+                        current_time = time.time()
+                        if current_time - self.classification_time > 2:
+                            self.last_classification = self.classify_face(face_roi)
+                            self.classification_time = current_time
+                            self.last_detection_time = current_time
+                            st.session_state.scan_result = self.last_classification
+                        
+                        # Draw detection box
+                        cv2.rectangle(overlay, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                        
+                        # Add classification label
+                        if self.last_classification:
+                            color = (0, 255, 0) if self.last_classification == "Slay" else (0, 0, 255)
+                            cv2.putText(overlay, self.last_classification, (x, y-10), 
+                                       font, 0.7, color, 2)
+        except Exception as e:
+            print(f"Error in face detection: {e}")
         
         # Blend overlay with original
         alpha = 0.3
@@ -252,7 +266,8 @@ if st.session_state.page == 'home':
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.image("https://img.icons8.com/fluency/96/credit-card.png", use_column_width=True)
+        # Use local image or fallback to emoji
+        st.markdown("<h1 style='text-align: center; font-size: 5rem;'>💳</h1>", unsafe_allow_html=True)
         
         if st.button("💳 SCAN FACECARD", use_container_width=True):
             go_to_scan()
@@ -273,7 +288,7 @@ if st.session_state.page == 'home':
 elif st.session_state.page == 'scan':
     st.markdown('<h1 class="main-title">📸 Scanning Your FaceCard</h1>', unsafe_allow_html=True)
     
-    # Credit card frame overlay in description
+    # Credit card frame overlay
     st.markdown("""
     <div style="text-align: center; margin-bottom: 20px;">
         <div class="credit-card-frame" style="display: inline-block; padding: 10px 30px;">
@@ -282,12 +297,22 @@ elif st.session_state.page == 'scan':
     </div>
     """, unsafe_allow_html=True)
     
-    # Initialize webcam
+    # Initialize webcam with deployment-optimized settings
     ctx = webrtc_streamer(
         key="facecard-scanner",
+        mode=WebRtcMode.SENDRECV,
         video_transformer_factory=FaceCardTransformer,
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-        media_stream_constraints={"video": {"width": {"ideal": 640}, "height": {"ideal": 480}}, "audio": False},
+        rtc_configuration={
+            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+        },
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+                "frameRate": {"ideal": 15}
+            }, 
+            "audio": False
+        },
         async_processing=True,
     )
     
@@ -317,7 +342,8 @@ elif st.session_state.page == 'result':
             Your FaceCard is approved! You're absolutely crushing it! 💅
         </div>
         """, unsafe_allow_html=True)
-        st.image("https://media.giphy.com/media/3o7abKh7NwRtAg3Hba/giphy.gif", use_column_width=True)
+        # Use emoji instead of GIF for reliability
+        st.markdown("<h1 style='text-align: center; font-size: 5rem;'>🎉✨💅</h1>", unsafe_allow_html=True)
     else:
         st.markdown(f'<h1 class="chopped-text">🔪 CHOPPED 🔪</h1>', unsafe_allow_html=True)
         st.markdown("""
@@ -325,7 +351,7 @@ elif st.session_state.page == 'result':
             Oof! Your FaceCard got declined. Maybe try again? 😅
         </div>
         """, unsafe_allow_html=True)
-        st.image("https://media.giphy.com/media/3o7TKUM3IgJBX2as9O/giphy.gif", use_column_width=True)
+        st.markdown("<h1 style='text-align: center; font-size: 5rem;'>😅💔</h1>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
