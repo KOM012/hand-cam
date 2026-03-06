@@ -1,36 +1,13 @@
-# requirements.txt - Tested working with Python 3.9
-
-# Core Streamlit
 streamlit==1.30.0
-
-# WebRTC for camera access
 streamlit-webrtc==0.57.0
-
-# MediaPipe for face detection
 mediapipe==1.15.0
-
-# OpenCV (headless version for servers)
 opencv-python-headless==4.8.0.74
-
-# NumPy for calculations
 numpy==1.24.3
-
-# AV for video/audio processing
 av==10.0.0
-
-# PIL for image handling
 Pillow==10.0.0
-
-# Protocol buffers for MediaPipe
 protobuf==3.20.3
-
-# Attrs for data classes
 attrs==21.4.0
-
-# WebRTC dependencies
 aiortc==1.4.0
-
-# Additional dependencies that might be needed
 cryptography==41.0.7
 pycryptodome==3.20.0
 google-auth==2.23.4
